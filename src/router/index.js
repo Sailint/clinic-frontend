@@ -33,10 +33,15 @@ const router = createRouter({
     routes
 });
 
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
     const isAuthenticated = store.getters.isAuthenticated;
     if (to.meta.requiresAuth && !isAuthenticated) {
-        next('/login');
+        await store.dispatch('restoreSession');
+        if (store.getters.isAuthenticated) {
+            next();
+        } else {
+            next('/login');
+        }
     } else {
         next();
     }

@@ -19,8 +19,9 @@
                     <td class="border p-2">{{ patient.id }}</td>
                     <td class="border p-2">{{ patient.name }}</td>
                     <td class="border p-2">{{ patient.surname }}</td>
-                    <td class="border p-2"><img :src="getPhotoUrl(patient.photo)" alt="Patient"
-                            class="w-16 h-16 object-cover" /></td>
+                    <td class="border p-2">
+                        <img :src="patient.photo" alt="Patient photo" class="w-16 h-16 object-cover" />
+                    </td>
                     <td class="border p-2">
                         <button @click="viewPatient(patient)"
                             class="bg-green-500 text-white px-2 py-1 rounded mr-2">Просмотр</button>
@@ -32,7 +33,7 @@
                 </tr>
             </template>
         </Table>
-        <!-- Новая пагинация -->
+        <!-- Пагинация -->
         <div class="mt-4 flex justify-center items-center space-x-2">
             <button :disabled="currentPage === 1" @click="currentPage = 1"
                 class="px-3 py-1 bg-gray-300 rounded disabled:opacity-50">
@@ -61,7 +62,7 @@
         <div v-if="showForm" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
             <div class="bg-white p-6 rounded max-w-lg w-full">
                 <h2 class="text-xl font-bold mb-4">{{ form.id ? 'Редактировать пациента' : 'Добавить пациента' }}</h2>
-                <Form @submit="savePatient">
+                <form @submit.prevent="savePatient">
                     <div class="grid grid-cols-1 gap-4">
                         <input v-model="form.name" type="text" placeholder="Имя" class="border p-2 rounded" required />
                         <input v-model="form.surname" type="text" placeholder="Фамилия" class="border p-2 rounded"
@@ -71,15 +72,16 @@
                         <select v-model="form.gender" class="border p-2 rounded" required>
                             <option value="male">Мужской</option>
                             <option value="female">Женский</option>
-                            <option value="other">Другой</option>
+                            <option value="other">Другое</option>
                         </select>
                         <input v-model="form.address" type="text" placeholder="Адрес" class="border p-2 rounded" />
                         <input v-model="form.phone" type="text" placeholder="Телефон" class="border p-2 rounded" />
-                        <input type="file" @change="handleFileChange" class="border p-2 rounded" />
+                        <input type="file" @change="handleFileChange" class="border p-2 rounded" accept="image/*" />
                         <textarea v-model="form.medical_history" placeholder="Медицинская история"
                             class="border p-2 rounded"></textarea>
+                        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded">Сохранить</button>
                     </div>
-                </Form>
+                </form>
                 <button @click="showForm = false" class="mt-4 bg-gray-500 text-white px-4 py-2 rounded">
                     Отмена
                 </button>
@@ -98,8 +100,7 @@
                     <p><strong>Адрес:</strong> {{ viewPatientData.address || 'Не указан' }}</p>
                     <p><strong>Телефон:</strong> {{ viewPatientData.phone || 'Не указан' }}</p>
                     <p><strong>Медицинская история:</strong> {{ viewPatientData.medical_history || 'Не указана' }}</p>
-                    <img :src="getPhotoUrl(viewPatientData.photo)" alt="Patient"
-                        class="w-32 h-32 object-cover rounded" />
+                    <img :src="viewPatientData.photo" alt="Patient photo" class="w-32 h-32 object-cover rounded" />
                 </div>
                 <button @click="showView = false" class="mt-4 bg-gray-500 text-white px-4 py-2 rounded">
                     Закрыть
@@ -114,10 +115,9 @@ import { ref, computed, watch } from 'vue';
 import { useStore } from 'vuex';
 import axios from 'axios';
 import Table from '../components/Table.vue';
-import Form from '../components/Form.vue';
 
 export default {
-    components: { Table, Form },
+    components: { Table },
     setup() {
         const store = useStore();
         const patients = ref([]);
@@ -161,9 +161,13 @@ export default {
             return pages;
         });
 
+        const apiUrl = import.meta.env.VITE_API_URL;
+        console.log('API URL:', apiUrl);
+
         const fetchPatients = async () => {
             try {
-                const response = await axios.get(`http://localhost:3000/api/patients?page=${currentPage.value}&limit=${limit}`);
+                const response = await axios.get(`${apiUrl}/api/patients?page=${currentPage.value}&limit=${limit}`);
+                console.log('Fetched patients:', response.data.patients);
                 patients.value = response.data.patients;
                 total.value = response.data.total;
             } catch (error) {
@@ -180,19 +184,28 @@ export default {
             formData.append('address', form.value.address);
             formData.append('phone', form.value.phone);
             formData.append('medical_history', form.value.medical_history);
-            if (file.value) formData.append('photo', file.value);
-            else if (form.value.photo) formData.append('photo', form.value.photo);
+            if (file.value) {
+                console.log('Uploading new photo:', file.value.name);
+                formData.append('photo', file.value);
+            } else if (form.value.photo) {
+                console.log('Using existing photo:', form.value.photo);
+                formData.append('photo', form.value.photo);
+            } else {
+                console.log('No photo provided, using default');
+            }
 
             try {
                 if (form.value.id) {
-                    await axios.put(`http://localhost:3000/api/patients/${form.value.id}`, formData);
+                    console.log('Updating patient:', form.value.id);
+                    await axios.put(`${apiUrl}/api/patients/${form.value.id}`, formData);
                 } else {
-                    await axios.post(`http://localhost:3000/api/patients`, formData);
+                    console.log('Adding new patient');
+                    await axios.post(`${apiUrl}/api/patients`, formData);
                 }
                 fetchPatients();
                 resetForm();
             } catch (error) {
-                console.error('Failed to save patient:', error);
+                console.error('Failed to save patient:', error.response?.data || error.message);
             }
         };
 
@@ -205,7 +218,7 @@ export default {
         const deletePatient = async (id) => {
             if (confirm('Удалить пациента?')) {
                 try {
-                    await axios.delete(`http://localhost:3000/api/patients/${id}`);
+                    await axios.delete(`${apiUrl}/api/patients/${id}`);
                     fetchPatients();
                 } catch (error) {
                     console.error('Failed to delete patient:', error);
@@ -238,10 +251,6 @@ export default {
             file.value = event.target.files[0];
         };
 
-        const getPhotoUrl = (photo) => {
-            return photo ? `http://localhost:3000${photo}` : '/images/placeholder.jpg';
-        };
-
         watch(currentPage, fetchPatients, { immediate: true });
 
         return {
@@ -251,6 +260,7 @@ export default {
             displayedPages,
             showForm,
             showView,
+            viewPatient,
             viewPatientData,
             form,
             isAdmin,
@@ -258,8 +268,7 @@ export default {
             editPatient,
             deletePatient,
             viewPatient,
-            handleFileChange,
-            getPhotoUrl
+            handleFileChange
         };
     }
 };

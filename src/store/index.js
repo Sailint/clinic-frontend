@@ -14,12 +14,17 @@ export default createStore({
         clearUser(state) {
             state.user = null;
             state.isAuthenticated = false;
+            localStorage.removeItem('token');
+            delete axios.defaults.headers.common['Authorization'];
         }
     },
     actions: {
         async register({ commit }, { email, password }) {
             try {
-                await axios.post('http://localhost:3000/api/register', { email, password });
+                await axios.post(
+                    `${import.meta.env.VITE_API_URL}/api/register`,
+                    { email, password }
+                );
                 return { success: true };
             } catch (error) {
                 console.error('Registration failed:', error.response?.data?.error || error.message);
@@ -31,7 +36,10 @@ export default createStore({
         },
         async login({ commit }, { email, password }) {
             try {
-                const response = await axios.post('http://localhost:3000/api/login', { email, password });
+                const response = await axios.post(
+                    `${import.meta.env.VITE_API_URL}/api/login`,
+                    { email, password }
+                );
                 const { token, role } = response.data;
                 localStorage.setItem('token', token);
                 axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -42,17 +50,23 @@ export default createStore({
                 return false;
             }
         },
-        logout({ commit }) {
-            localStorage.removeItem('token');
-            delete axios.defaults.headers.common['Authorization'];
-            commit('clearUser');
-        },
-        initAuth({ commit }) {
+        async restoreSession({ commit }) {
             const token = localStorage.getItem('token');
             if (token) {
-                axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-                commit('setUser', { token, role: 'user' }); // Роль уточняется при логине
+                try {
+                    axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+                    const response = await axios.get(
+                        `${import.meta.env.VITE_API_URL}/api/me`
+                    );
+                    commit('setUser', { token, role: response.data.role });
+                } catch (error) {
+                    console.error('Failed to restore session:', error);
+                    commit('clearUser');
+                }
             }
+        },
+        logout({ commit }) {
+            commit('clearUser');
         }
     },
     getters: {

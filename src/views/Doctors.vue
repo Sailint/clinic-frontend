@@ -19,8 +19,9 @@
                     <td class="border p-2">{{ doctor.id }}</td>
                     <td class="border p-2">{{ doctor.name }}</td>
                     <td class="border p-2">{{ doctor.surname }}</td>
-                    <td class="border p-2"><img :src="getPhotoUrl(doctor.photo)" alt="Doctor"
-                            class="w-16 h-16 object-cover" /></td>
+                    <td class="border p-2">
+                        <img :src="doctor.photo" alt="Doctor photo" class="w-16 h-16 object-cover" />
+                    </td>
                     <td class="border p-2">
                         <button @click="viewDoctor(doctor)"
                             class="bg-green-500 text-white px-2 py-1 rounded mr-2">Просмотр</button>
@@ -61,7 +62,7 @@
         <div v-if="showForm" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
             <div class="bg-white p-6 rounded max-w-lg w-full">
                 <h2 class="text-xl font-bold mb-4">{{ form.id ? 'Редактировать врача' : 'Добавить врача' }}</h2>
-                <Form @submit="saveDoctor">
+                <form @submit.prevent="saveDoctor">
                     <div class="grid grid-cols-1 gap-4">
                         <input v-model="form.name" type="text" placeholder="Имя" class="border p-2 rounded" required />
                         <input v-model="form.surname" type="text" placeholder="Фамилия" class="border p-2 rounded"
@@ -73,10 +74,11 @@
                         <input v-model="form.email" type="email" placeholder="Email" class="border p-2 rounded"
                             required />
                         <input v-model="form.phone" type="text" placeholder="Телефон" class="border p-2 rounded" />
-                        <input type="file" @change="handleFileChange" class="border p-2 rounded" />
+                        <input type="file" @change="handleFileChange" class="border p-2 rounded" accept="image/*" />
                         <textarea v-model="form.info" placeholder="Информация" class="border p-2 rounded"></textarea>
+                        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded">Сохранить</button>
                     </div>
-                </Form>
+                </form>
                 <button @click="showForm = false" class="mt-4 bg-gray-500 text-white px-4 py-2 rounded">
                     Отмена
                 </button>
@@ -95,7 +97,7 @@
                     <p><strong>Email:</strong> {{ viewDoctorData.email }}</p>
                     <p><strong>Телефон:</strong> {{ viewDoctorData.phone || 'Не указан' }}</p>
                     <p><strong>Информация:</strong> {{ viewDoctorData.info || 'Не указана' }}</p>
-                    <img :src="getPhotoUrl(viewDoctorData.photo)" alt="Doctor" class="w-32 h-32 object-cover rounded" />
+                    <img :src="viewDoctorData.photo" alt="Doctor photo" class="w-32 h-32 object-cover rounded" />
                 </div>
                 <button @click="showView = false" class="mt-4 bg-gray-500 text-white px-4 py-2 rounded">
                     Закрыть
@@ -110,10 +112,9 @@ import { ref, computed, watch } from 'vue';
 import { useStore } from 'vuex';
 import axios from 'axios';
 import Table from '../components/Table.vue';
-import Form from '../components/Form.vue';
 
 export default {
-    components: { Table, Form },
+    components: { Table },
     setup() {
         const store = useStore();
         const doctors = ref([]);
@@ -159,7 +160,7 @@ export default {
 
         const fetchDoctors = async () => {
             try {
-                const response = await axios.get(`http://localhost:3000/api/doctors?page=${currentPage.value}&limit=${limit}`);
+                const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/doctors?page=${currentPage.value}&limit=${limit}`);
                 doctors.value = response.data.doctors;
                 total.value = response.data.total;
             } catch (error) {
@@ -176,19 +177,28 @@ export default {
             formData.append('email', form.value.email);
             formData.append('phone', form.value.phone);
             formData.append('info', form.value.info);
-            if (file.value) formData.append('photo', file.value);
-            else if (form.value.photo) formData.append('photo', form.value.photo);
+            if (file.value) {
+                console.log('Uploading new photo:', file.value.name);
+                formData.append('photo', file.value);
+            } else if (form.value.photo) {
+                console.log('Using existing photo:', form.value.photo);
+                formData.append('photo', form.value.photo);
+            } else {
+                console.log('No photo provided, using default');
+            }
 
             try {
                 if (form.value.id) {
-                    await axios.put(`http://localhost:3000/api/doctors/${form.value.id}`, formData);
+                    console.log('Updating doctor:', form.value.id);
+                    await axios.put(`${import.meta.env.VITE_API_URL}/api/doctors/${form.value.id}`, formData);
                 } else {
-                    await axios.post(`http://localhost:3000/api/doctors`, formData);
+                    console.log('Adding new doctor');
+                    await axios.post(`${import.meta.env.VITE_API_URL}/api/doctors`, formData);
                 }
                 fetchDoctors();
                 resetForm();
             } catch (error) {
-                console.error('Failed to save doctor:', error);
+                console.error('Failed to save doctor:', error.response?.data || error.message);
             }
         };
 
@@ -201,7 +211,7 @@ export default {
         const deleteDoctor = async (id) => {
             if (confirm('Удалить врача?')) {
                 try {
-                    await axios.delete(`http://localhost:3000/api/doctors/${id}`);
+                    await axios.delete(`${import.meta.env.VITE_API_URL}/api/doctors/${id}`);
                     fetchDoctors();
                 } catch (error) {
                     console.error('Failed to delete doctor:', error);
@@ -234,10 +244,6 @@ export default {
             file.value = event.target.files[0];
         };
 
-        const getPhotoUrl = (photo) => {
-            return photo ? `http://localhost:3000${photo}` : '/images/placeholder.jpg';
-        };
-
         watch(currentPage, fetchDoctors, { immediate: true });
 
         return {
@@ -247,6 +253,7 @@ export default {
             displayedPages,
             showForm,
             showView,
+            viewDoctor,
             viewDoctorData,
             form,
             isAdmin,
@@ -254,8 +261,7 @@ export default {
             editDoctor,
             deleteDoctor,
             viewDoctor,
-            handleFileChange,
-            getPhotoUrl
+            handleFileChange
         };
     }
 };
